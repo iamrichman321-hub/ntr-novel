@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NTR師 - 小說閱讀器</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-amber-50/40 text-gray-800 min-h-screen pb-16 font-sans">
+
+  <!-- 配置 Supabase 連線 -->
+  <script>
+    const SUPABASE_URL = 'https://ukxtjqqzefecuindwelu.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_eQmfEs3IwfwXyXYH8sftyg_umVWvsyR';
+
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  </script>
+
+  <!-- 頂部導覽列 -->
+  <header class="bg-amber-900 text-amber-50 sticky top-0 z-20 shadow-md">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
+      <h1 class="text-lg font-bold cursor-pointer flex items-center gap-2" onclick="showCatalog()">
+        <span>📖</span> NTR師
+      </h1>
+      <button onclick="openModal()" class="bg-amber-100 text-amber-900 hover:bg-amber-200 text-xs font-bold px-3 py-1.5 rounded-full shadow transition flex items-center gap-1">
+        <span>➕</span> 發布新章節
+      </button>
+    </div>
+  </header>
+
+  <!-- 主內容區 -->
+  <main class="max-w-3xl mx-auto px-3 sm:px-4 mt-4">
+    
+    <!-- 1. 主版面：章節目錄頁 -->
+    <section id="catalogPage">
+      <div class="mb-4 flex justify-between items-center">
+        <h2 class="text-base font-bold text-amber-950 border-l-4 border-amber-800 pl-2">章節列表</h2>
+        <span id="chapterCount" class="text-xs text-gray-500">共 0 章</span>
+      </div>
+
+      <!-- 載入中 -->
+      <div id="loadingSpinner" class="text-center py-12 text-gray-500">
+        <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-amber-700 border-t-transparent mb-2"></div>
+        <p class="text-sm">正在從雲端載入章節...</p>
+      </div>
+
+      <!-- 目錄 Grid (卡片列表) -->
+      <div id="chapterGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+
+      <div id="emptyState" class="hidden text-center py-12 text-gray-400">
+        <p class="text-4xl mb-2">📚</p>
+        <p class="text-sm">目前還沒有發布任何章節，點擊右上角「發布新章節」開始寫作！</p>
+      </div>
+    </section>
+
+    <!-- 2. 內頁：文章閱讀頁 -->
+    <section id="readerPage" class="hidden bg-white rounded-2xl shadow-lg border border-amber-100 p-4 sm:p-8">
+      <button onclick="showCatalog()" class="text-amber-800 hover:text-amber-950 text-sm font-bold mb-6 inline-flex items-center gap-1">
+        ← 返回目錄列表
+      </button>
+
+      <!-- 章節標頭資訊 -->
+      <div class="text-center border-b border-amber-100 pb-6 mb-6">
+        <div class="inline-block bg-amber-100 text-amber-900 text-xs font-bold px-3 py-1 rounded-full mb-2" id="readSeasonChapter"></div>
+        <h2 id="readTitle" class="text-2xl sm:text-3xl font-bold text-gray-900 mb-4"></h2>
+        
+        <!-- 章圖片 -->
+        <div id="readCoverContainer" class="max-w-md mx-auto overflow-hidden rounded-xl shadow-md border border-amber-100 hidden my-4">
+          <img id="readCover" class="w-full h-auto object-cover max-h-80" src="" alt="章圖片">
+        </div>
+      </div>
+
+      <!-- 正文內容區 (支援內嵌多圖) -->
+      <div id="readContent" class="prose max-w-none text-gray-800 text-base sm:text-lg leading-relaxed sm:leading-loose space-y-4 px-1 sm:px-4"></div>
+      
+      <!-- 底部導覽按鈕 -->
+      <div class="mt-10 pt-6 border-t border-amber-100 flex justify-between items-center text-xs font-bold text-amber-900">
+        <button id="prevChapterBtn" class="px-4 py-2 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition disabled:opacity-30 disabled:cursor-not-allowed">上一章</button>
+        <button onclick="showCatalog()" class="px-3 py-2 text-gray-500 hover:text-amber-900">目錄</button>
+        <button id="nextChapterBtn" class="px-4 py-2 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition disabled:opacity-30 disabled:cursor-not-allowed">下一章</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 3. Modal：發布 / 編輯章節彈窗 -->
+  <div id="chapterModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-30 flex justify-center items-center p-3">
+    <div class="bg-white w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+      <div class="bg-amber-900 text-amber-50 px-4 py-3 flex justify-between items-center">
+        <h3 id="modalTitle" class="font-bold text-base">發布新章節</h3>
+        <button onclick="closeModal()" class="text-white hover:text-gray-200 text-xl font-bold">&times;</button>
+      </div>
+
+      <form id="chapterForm" onsubmit="saveChapter(event)" class="p-4 overflow-y-auto space-y-3 text-sm">
+        <input type="hidden" id="chapterId">
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">第幾季 *</label>
+            <input type="number" id="inputSeason" value="1" min="1" required class="w-full px-3 py-1.5 border rounded-lg focus:ring-2 focus:ring-amber-800 outline-none">
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">第幾章 *</label>
+            <input type="number" id="inputChapterNum" min="1" placeholder="例如: 1" required class="w-full px-3 py-1.5 border rounded-lg focus:ring-2 focus:ring-amber-800 outline-none">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">章標題 *</label>
+          <input type="text" id="inputTitle" placeholder="例如: 初次交鋒" required class="w-full px-3 py-1.5 border rounded-lg focus:ring-2 focus:ring-amber-800 outline-none">
+        </div>
+
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">章封面圖片 (單張上載)</label>
+          <input type="file" id="inputCoverFile" accept="image/*" class="w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:bg-amber-100 file:text-amber-900">
+          <img id="coverPreview" class="h-20 object-cover rounded-lg mt-2 hidden border">
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="block font-bold text-gray-700">正文內容 *</label>
+            <!-- 本地圖片上載按鈕 -->
+            <label class="cursor-pointer bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold px-2.5 py-1 rounded shadow transition inline-flex items-center gap-1">
+              <span>📷 插入本地插圖</span>
+              <input type="file" id="inlineImageInput" accept="image/*" class="hidden" onchange="uploadInlineImage(this)">
+            </label>
+          </div>
+          <p id="inlineUploadStatus" class="text-xs text-amber-800 hidden font-semibold mb-1">⏳ 插圖上傳中...</p>
+
+          <textarea id="inputContent" rows="10" placeholder="在此輸入或貼上小說內文...
+
+你可以隨時點擊右上角的「📷 插入本地插圖」按鈕選擇本地圖片，系統會自動在游標位置插入插圖！" required class="w-full px-3 py-1.5 border rounded-lg focus:ring-2 focus:ring-amber-800 outline-none leading-relaxed"></textarea>
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2 border-t">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-100">取消</button>
+          <button type="submit" id="submitBtn" class="px-4 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-lg font-bold shadow">儲存發布</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 腳本邏輯 -->
+  <script>
+    let chaptersData = [];
+    let currentChapterIndex = -1;
+    let currentCoverUrl = '';
+
+    const DEFAULT_COVER = 'https://images.unsplash.com/photo-1457369804613-52c61a468e7d?w=400&auto=format&fit=crop&q=80';
+
+    document.addEventListener('DOMContentLoaded', fetchChapters);
+
+    // 1. 從 Supabase 載入所有章節
+    async function fetchChapters() {
+      const spinner = document.getElementById('loadingSpinner');
+      const emptyState = document.getElementById('emptyState');
+      const grid = document.getElementById('chapterGrid');
+
+      spinner.classList.remove('hidden');
+      emptyState.classList.add('hidden');
+      grid.innerHTML = '';
+
+      try {
+        const { data, error } = await supabaseClient
+          .from('ntr_chapters')
+          .select('*')
+          .order('season', { ascending: true })
+          .order('chapter_number', { ascending: true });
+
+        if (error) throw error;
+
+        chaptersData = data || [];
+        document.getElementById('chapterCount').textContent = `共 ${chaptersData.length} 章`;
+        renderCatalog();
+      } catch (err) {
+        alert('載入章節失敗: ' + (err.message || JSON.stringify(err)));
+      } finally {
+        spinner.classList.add('hidden');
+      }
+    }
+
+    // 2. 渲染主版面目錄
+    function renderCatalog() {
+      const grid = document.getElementById('chapterGrid');
+      const emptyState = document.getElementById('emptyState');
+      grid.innerHTML = '';
+
+      if (chaptersData.length === 0) {
+        emptyState.classList.remove('hidden');
+        return;
+      }
+
+      chaptersData.forEach((ch, index) => {
+        const card = document.createElement('div');
+        card.className = "bg-white rounded-xl shadow border border-amber-100 overflow-hidden cursor-pointer hover:shadow-md transition flex flex-col";
+        card.onclick = () => openReader(index);
+
+        card.innerHTML = `
+          <div class="w-full h-40 bg-gray-100 overflow-hidden relative">
+            <img src="${ch.cover_url || DEFAULT_COVER}" alt="${ch.title}" class="w-full h-full object-cover">
+            <div class="absolute top-2 left-2 bg-black/60 backdrop-blur-md text-amber-200 text-xs font-bold px-2.5 py-1 rounded-full">
+              第 ${ch.season} 季 · 第 ${ch.chapter_number} 章
+            </div>
+          </div>
+          <div class="p-3.5 flex-grow flex flex-col justify-between">
+            <h3 class="font-bold text-gray-900 text-base line-clamp-1 mb-1">${ch.title}</h3>
+            <p class="text-xs text-gray-500 line-clamp-2">${ch.content.replace(/\[img:[^\]]+\]/g, '')}</p>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    // 3. 打開內頁閱讀器
+    function openReader(index) {
+      currentChapterIndex = index;
+      const ch = chaptersData[index];
+      if (!ch) return;
+
+      document.getElementById('readSeasonChapter').textContent = `第 ${ch.season} 季 · 第 ${ch.chapter_number} 章`;
+      document.getElementById('readTitle').textContent = ch.title;
+
+      // 章圖片顯示
+      const coverImg = document.getElementById('readCover');
+      const coverContainer = document.getElementById('readCoverContainer');
+      if (ch.cover_url) {
+        coverImg.src = ch.cover_url;
+        coverContainer.classList.remove('hidden');
+      } else {
+        coverContainer.classList.add('hidden');
+      }
+
+      // 解析正文與多圖語法 [img:URL]
+      renderContentWithImages(ch.content);
+
+      // 上下一章按鈕狀態
+      const prevBtn = document.getElementById('prevChapterBtn');
+      const nextBtn = document.getElementById('nextChapterBtn');
+      
+      prevBtn.disabled = index === 0;
+      prevBtn.onclick = () => openReader(index - 1);
+
+      nextBtn.disabled = index === chaptersData.length - 1;
+      nextBtn.onclick = () => openReader(index + 1);
+
+      document.getElementById('catalogPage').classList.add('hidden');
+      document.getElementById('readerPage').classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 解析正文中的 [img:URL] 標記語法
+    function renderContentWithImages(rawContent) {
+      const container = document.getElementById('readContent');
+      container.innerHTML = '';
+
+      const regex = /\[img:(https?:\/\/[^\]]+)\]/g;
+      let lastIndex = 0;
+      let match;
+
+      while ((match = regex.exec(rawContent)) !== null) {
+        const textBefore = rawContent.slice(lastIndex, match.index).trim();
+        if (textBefore) {
+          const p = document.createElement('p');
+          p.className = "whitespace-pre-line";
+          p.textContent = textBefore;
+          container.appendChild(p);
+        }
+
+        const imgUrl = match[1];
+        const imgDiv = document.createElement('div');
+        imgDiv.className = "my-6 text-center";
+        imgDiv.innerHTML = `
+          <img src="${imgUrl}" class="max-w-full h-auto mx-auto rounded-xl shadow-md border border-amber-100 max-h-[500px] object-contain">
+        `;
+        container.appendChild(imgDiv);
+
+        lastIndex = regex.lastIndex;
+      }
+
+      const remainingText = rawContent.slice(lastIndex).trim();
+      if (remainingText) {
+        const p = document.createElement('p');
+        p.className = "whitespace-pre-line";
+        p.textContent = remainingText;
+        container.appendChild(p);
+      }
+    }
+
+    function showCatalog() {
+      document.getElementById('readerPage').classList.add('hidden');
+      document.getElementById('catalogPage').classList.remove('hidden');
+    }
+
+    // 雲端上傳圖片共通函式
+    async function uploadImage(file) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `novel_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `uploads/${fileName}`;
+
+      const { data, error } = await supabaseClient.storage
+        .from('photos')
+        .upload(filePath, file);
+
+      if (error) throw error;
+
+      const { data: publicUrlData } = supabaseClient.storage
+        .from('photos')
+        .getPublicUrl(filePath);
+
+      return publicUrlData.publicUrl;
+    }
+
+    // 本地插圖直接上傳並自動插在正文游標處
+    async function uploadInlineImage(input) {
+      const file = input.files[0];
+      if (!file) return;
+
+      const status = document.getElementById('inlineUploadStatus');
+      const textarea = document.getElementById('inputContent');
+
+      status.classList.remove('hidden');
+
+      try {
+        const imgUrl = await uploadImage(file);
+        const tag = `\n\n[img:${imgUrl}]\n\n`;
+
+        // 插入到游標當前位置
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const text = textarea.value;
+
+        textarea.value = text.substring(0, start) + tag + text.substring(end);
+        textarea.focus();
+        textarea.selectionEnd = start + tag.length;
+
+      } catch (err) {
+        alert('插圖上傳失敗: ' + (err.message || JSON.stringify(err)));
+      } finally {
+        status.classList.add('hidden');
+        input.value = ''; // 清空選擇
+      }
+    }
+
+    function openModal(ch = null) {
+      const modal = document.getElementById('chapterModal');
+      const form = document.getElementById('chapterForm');
+      form.reset();
+
+      document.getElementById('coverPreview').classList.add('hidden');
+
+      if (ch) {
+        document.getElementById('modalTitle').textContent = '編輯章節';
+        document.getElementById('chapterId').value = ch.id;
+        document.getElementById('inputSeason').value = ch.season || 1;
+        document.getElementById('inputChapterNum').value = ch.chapter_number || '';
+        document.getElementById('inputTitle').value = ch.title || '';
+        document.getElementById('inputContent').value = ch.content || '';
+        currentCoverUrl = ch.cover_url || '';
+
+        if (currentCoverUrl) {
+          const prev = document.getElementById('coverPreview');
+          prev.src = currentCoverUrl;
+          prev.classList.remove('hidden');
+        }
+      } else {
+        document.getElementById('modalTitle').textContent = '發布新章節';
+        document.getElementById('chapterId').value = '';
+        currentCoverUrl = '';
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('chapterModal').classList.add('hidden');
+    }
+
+    // 儲存發布章節
+    async function saveChapter(e) {
+      e.preventDefault();
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '發布儲存中...';
+
+      try {
+        const id = document.getElementById('chapterId').value;
+        const coverFile = document.getElementById('inputCoverFile').files[0];
+
+        let coverUrl = currentCoverUrl;
+        if (coverFile) {
+          coverUrl = await uploadImage(coverFile);
+        }
+
+        const payload = {
+          season: parseInt(document.getElementById('inputSeason').value),
+          chapter_number: parseInt(document.getElementById('inputChapterNum').value),
+          title: document.getElementById('inputTitle').value.trim(),
+          cover_url: coverUrl,
+          content: document.getElementById('inputContent').value.trim()
+        };
+
+        if (id) {
+          const { error } = await supabaseClient
+            .from('ntr_chapters')
+            .update(payload)
+            .eq('id', id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabaseClient
+            .from('ntr_chapters')
+            .insert([payload]);
+          if (error) throw error;
+        }
+
+        closeModal();
+        await fetchChapters();
+        showCatalog();
+
+      } catch (err) {
+        alert('發布失敗: ' + (err.message || JSON.stringify(err)));
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '儲存發布';
+      }
+    }
+  </script>
+</body>
+</html>
